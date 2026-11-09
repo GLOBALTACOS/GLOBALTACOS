@@ -1,4 +1,4 @@
-      document.getElementById('fxRateVal').innerText = `1 USD = ${currentUsdJpyRate.toFixed(2)} JPY`;
+document.getElementById('fxRateVal').innerText = `1 USD = ${currentUsdJpyRate.toFixed(2)} JPY`;
       updateView();
       if (currentSelectedCountry) showDetail(currentSelectedCountry);
     }
