@@ -1,4 +1,5 @@
-      document.getElementById('fxRateVal').innerText = `1 USD = ${currentUsdJpyRate.toFixed(2)} JPY`;
+      
+  document.getElementById('fxRateVal').innerText = `1 USD = ${currentUsdJpyRate.toFixed(2)} JPY`;
 updateView();
 if (currentSelectedCountry) showDetail(currentSelectedCountry);
 
@@ -105,4 +106,7 @@ function renderRanking(list) {
       <span><b>${idx + 1}.</b> ${countryName}</span>
       <span><b>$${c.priceUsd.toFixed(2)}</b> (${priceJpy.toLocaleString()}円)</span>
     `;
-    rankingEl.appendChiｍ
+    rankingEl.appendChild(li);
+  });
+}
+
