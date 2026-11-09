@@ -1,4 +1,4 @@
-document.getElementById('fxRateVal').innerText = `1 USD = ${currentUsdJpyRate.toFixed(2)} JPY`;
+      document.getElementById('fxRateVal').innerText = `1 USD = ${currentUsdJpyRate.toFixed(2)} JPY`;
       updateView();
       if (currentSelectedCountry) showDetail(currentSelectedCountry);
     }
@@ -12,7 +12,8 @@ document.getElementById('fxRateVal').innerText = `1 USD = ${currentUsdJpyRate.to
         const data = await res.json();
         if (data && data.rates && data.rates.JPY) {
           currentUsdJpyRate = data.rates.JPY;
-          document.getElementById('fxRateVal').innerText = 1 USD = ${currentUsdJpyRate.toFixed(2)} JPY statusEl.innerText = 'ONLINE';
+          document.getElementById('fxRateVal').innerText = `1 USD = ${currentUsdJpyRate.toFixed(2)} JPY`;
+          statusEl.innerText = 'ONLINE';
           statusEl.style.background = '#10b981';
         } else { throw new Error('Invalid rate data'); }
       } catch (err) {
@@ -39,7 +40,8 @@ document.getElementById('fxRateVal').innerText = `1 USD = ${currentUsdJpyRate.to
         if (c.priceUsd < basePriceUsd) cls = 'pin-under';
         const icon = L.divIcon({
           className: '',
-          html: <div class="custom-pin ${cls}"></div>` iconSize: [12, 12]
+          html: `<div class="custom-pin ${cls}"></div>`,
+          iconSize: [12, 12]
         });
         const m = L.marker([c.lat, c.lng], { icon: icon }).addTo(map);
         m.on('click', () => showDetail(c));
@@ -57,7 +59,7 @@ document.getElementById('fxRateVal').innerText = `1 USD = ${currentUsdJpyRate.to
       const countryName = c.name[currentLang] || c.name.ja;
       const countryNote = c.note[currentLang] || c.note.ja;
       document.getElementById('detailBox').innerHTML = `
-<div class="card-title">
+        <div class="card-title">
           <span>${countryName}</span>
           <span style="font-size:0.8rem; color:#94a3b8;">${c.priceUsd > basePriceUsd ? t.tagOver : (c.priceUsd === basePriceUsd ? t.tagBase : t.tagUnder)}</span>
         </div>
