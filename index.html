@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GLOBALTACOS - リアルタイム為替＆50カ国版</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    html, body { width: 100%; height: 100%; margin: 0; padding: 0; background-color: #0f172a; color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { display: flex; flex-direction: column; overflow: hidden; }
+
+    header { background: #1e293b; border-bottom: 1px solid #334155; padding: 10px 16px; display: flex; justify-content: space-between; align-items: center; height: 50px; flex-shrink: 0; }
+    .logo { font-size: 1.2rem; font-weight: bold; color: #f59e0b; }
+    .controls { display: flex; gap: 8px; align-items: center; }
+    select, button { background: #0f172a; color: #fff; border: 1px solid #475569; padding: 4px 8px; border-radius: 4px; font-size: 0.85rem; cursor: pointer; }
+    select:hover, button:hover { border-color: #f59e0b; }
+
+    .main-container { display: flex; flex: 1; height: calc(100vh - 50px); width: 100vw; position: relative; }
+    #map { flex: 1; height: 100% !important; width: 100% !important; background: #0f172a; }
+
+    .sidebar { width: 350px; background: #1e293b; border-left: 1px solid #334155; padding: 16px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; flex-shrink: 0; }
+    
+    .card { background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 12px; }
+    .card-title { font-size: 1.1rem; font-weight: bold; margin-bottom: 8px; display: flex; justify-content: space-between; color: #f59e0b; }
+    
+    .fx-panel { background: rgba(245, 158, 11, 0.1); border: 1px solid #f59e0b; padding: 10px; border-radius: 8px; }
+    .fx-info { font-size: 0.85rem; font-weight: bold; display: flex; justify-content: space-between; align-items: center; }
+    .status-badge { font-size: 0.7rem; background: #10b981; color: #fff; padding: 2px 6px; border-radius: 4px; font-weight: normal; }
+    
+    .data-row { display: flex; justify-content: space-between; font-size: 0.85rem; color: #cbd5e1; margin: 4px 0; }
+    .highlight-val { color: #38bdf8; font-weight: bold; }
+    
+    .game-box { background: #1e293b; border: 1px solid #475569; border-radius: 6px; padding: 8px; margin-top: 8px; text-align: center; }
+    .taco-count { font-size: 1.2rem; font-weight: bold; color: #10b981; margin: 4px 0; }
+
+    .ranking-list { list-style: none; padding: 0; margin: 0; }
+    .ranking-item { display: flex; justify-content: space-between; padding: 6px 4px; font-size: 0.85rem; border-bottom: 1px solid #334155; cursor: pointer; transition: background 0.2s; }
+    .ranking-item:hover { background: #334155; }
+
+    .custom-pin { width: 12px; height: 12px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 4px rgba(0,0,0,0.5); }
+    .pin-over { background: #ef4444; }
+    .pin-under { background: #3b82f6; }
+    .pin-base { background: #10b981; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="logo">🌮 GLOBALTACOS</div>
+    <div class="controls">
+      <!-- 言語切替セレクトボックス -->
+      <select id="langSelect" onchange="changeLanguage()">
+        <option value="ja">日本語</option>
+        <option value="en">English</option>
+        <option value="es">Español</option>
+      </select>
+
+      <select id="filterSelect" onchange="updateView()">
+        <option value="all" id="optAll">全50カ国</option>
+        <option value="over" id="optOver">割高 (赤)</option>
+        <option value="under" id="optUnder">割安 (青)</option>
+      </select>
+    </div>
+  </header>
+
+  <div class="main-container">
+    <div id="map"></div>
+    
+    <div class="sidebar">
+      <!-- リアルタイム為替表示パネル -->
+      <div class="fx-panel">
+        <div class="fx-info">
+          <span id="labelFx">🌐 リアルタイム為替:</span>
+          <span id="fxRateVal" style="color:#f59e0b;">取得中...</span>
+        </div>
+        <div style="font-size: 0.7rem; color: #94a3b8; margin-top: 4px; display:flex; justify-content:space-between; align-items:center;">
+          <span><span id="labelApi">API連携:</span> <span id="apiStatus" class="status-badge">取得中</span></span>
+          <button id="btnRefresh" onclick="fetchFxRate()" style="font-size:0.65rem; padding:2px 6px;">手動更新</button>
+        </div>
+      </div>
+
+      <!-- 国詳細 & 旅行者シミュレーター -->
+      <div id="detailBox" class="card">
+        <div id="defaultDetailText" style="text-align: center; color: #64748b; font-size: 0.85rem;">
+          ピンまたは国リストを選択すると、リアルタイム為替で計算された購買力データが表示されます！
+        </div>
+      </div>
+
+      <!-- 50カ国ランキング -->
+      <div id="labelRankingTitle" style="font-weight: bold; font-size: 0.9rem; color: #94a3b8; margin-top: 4px;">タコス指数ランキング (日本円換算)</div>
+      <ul class="ranking-list" id="rankingList"></ul>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    let currentLang = 'ja';
+
+    // 言語リソース
+    const i18n = {
+      ja: {
+        optAll: "全50カ国",
+        optOver: "割高 (赤)",
+        optUnder: "割安 (青)",
+        labelFx: "🌐 リアルタイム為替:",
+        labelApi: "API連携:",
+        btnRefresh: "手動更新",
+        fetching: "取得中",
+        fixed: "(固定値)",
+        defaultDetailText: "ピンまたは国リストを選択すると、リアルタイム為替で計算された購買力データが表示されます！",
+        labelRankingTitle: "タコス指数ランキング (日本円換算)",
+        tagOver: "🔴 割高国",
+        tagBase: "🟢 基準国",
+        tagUnder: "🔵 割安国",
+        priceUsd: "1タコスの価格 (USD):",
+        priceJpy: "日本円換算:",
+        pppRatio: "適正価格比 (PPP):",
+        tripMsg: "✈️ $1,000を持って旅行に行くと…",
+        buyableMsg: "個買える！",
+        highPurchasing: "現地物価が安く、購買力が高い状態です。",
+        lowPurchasing: "物価が高く、お金の減りが早い状態です。",
+        noteTitle: "💡 為替ワンポイント考察:"
+      },
+      en: {
+        optAll: "All 50 Countries",
+        optOver: "Overpriced (Red)",
+        optUnder: "Underpriced (Blue)",
+        labelFx: "🌐 Real-Time FX:",
+        labelApi: "API Status:",
+        btnRefresh: "Refresh",
+        fetching: "Fetching...",
+        fixed: "(Fixed Rate)",
+        defaultDetailText: "Select a pin or country from the list to see purchasing power data calculated with real-time exchange rates!",
+        labelRankingTitle: "Taco Index Ranking (in JPY)",
+        tagOver: "🔴 Overpriced",
+        tagBase: "🟢 Base Country",
+        tagUnder: "🔵 Underpriced",
+        priceUsd: "1 Taco Price (USD):",
+        priceJpy: "JPY Equivalent:",
+        pppRatio: "PPP Ratio:",
+        tripMsg: "✈️ Traveling with $1,000...",
+        buyableMsg: " Tacos Buyable!",
+        highPurchasing: "Local prices are low, meaning high purchasing power.",
+        lowPurchasing: "High local prices mean faster spending.",
+        noteTitle: "💡 Currency Insight:"
+      },
+      es: {
+        optAll: "Los 50 países",
+        optOver: "Sobreprecio (Rojo)",
+        optUnder: "Económico (Azul)",
+        labelFx: "🌐 Tipo de cambio en vivo:",
+        labelApi: "Estado de API:",
+        btnRefresh: "Actualizar",
+        fetching: "Obteniendo...",
+        fixed: "(Valor fijo)",
+        defaultDetailText: "¡Seleccione un pin o un país de la lista para ver datos de poder adquisitivo calculados con tipos de cambio en vivo!",
+        labelRankingTitle: "Clasificación del Índice Taco (en JPY)",
+        tagOver: "🔴 Sobreprecio",
+        tagBase: "🟢 País de referencia",
+        tagUnder: "🔵 Económico",
+        priceUsd: "Precio de 1 Taco (USD):",
+        priceJpy: "Equivalente en JPY:",
+        pppRatio: "Relación PPA:",
+        tripMsg: "✈️ Viajando con $1,000...",
+        buyableMsg: " ¡Tacos que puedes comprar!",
+        highPurchasing: "Precios locales bajos, lo que significa un alto poder adquisitivo.",
+        lowPurchasing: "Los precios locales altos significan un gasto más rápido.",
+        noteTitle: "💡 Análisis de divisas:"
+      }
+    };
+
+    // 50カ国完全データ（多言語対応）
+    const countries = [
+      { id: 'MX', name: { ja: 'メキシコ', en: 'Mexico', es: 'México' }, lat: 23.6345, lng: -102.5528, priceUsd: 2.20, note: { ja: '基準国！タコス本場の適正価格。', en: 'Base country! Fair market price for authentic tacos.', es: '¡País base! Precio justo para tacos auténticos.' } },
+      { id: 'US', name: { ja: 'アメリカ', en: 'United States', es: 'Estados Unidos' }, lat: 37.0902, lng: -95.7129, priceUsd: 3.80, note: { ja: '人件費とインフレの影響で割高。', en: 'Overpriced due to high labor costs and inflation.', es: 'Sobreprecio debido a los altos costos laborales e inflación.' } },
+      { id: 'CA', name: { ja: 'カナダ', en: 'Canada', es: 'Canadá' }, lat: 56.1304, lng: -106.3468, priceUsd: 3.60, note: { ja: '外食産業の価格上昇が顕著。', en: 'Significant price increases in dining out.', es: 'Aumento significativo en los precios de restaurantes.' } },
+      { id: 'BR', name: { ja: 'ブラジル', en: 'Brazil', es: 'Brasil' }, lat: -14.2350, lng: -51.9253, priceUsd: 2.10, note: { ja: '南米大国。メキシコよりやや安め。', en: 'South American giant. Slightly cheaper than Mexico.', es: 'Gigante sudamericano. Un poco más barato que México.' } },
+      { id: 'AR', name: { ja: 'アルゼンチン', en: 'Argentina', es: 'Argentina' }, lat: -38.4161, lng: -63.6167, priceUsd: 1.80, note: { ja: '通貨安によりドル換算では割安。', en: 'Cheap in USD due to currency depreciation.', es: 'Barato en USD debido a la depreciación de la moneda.' } },
+      { id: 'CL', name: { ja: 'チリ', en: 'Chile', es: 'Chile' }, lat: -35.6751, lng: -71.5430, priceUsd: 2.50, note: { ja: '南米の中では安定した物価。', en: 'Stable prices compared to rest of South America.', es: 'Precios estables en comparación con el resto de Sudamérica.' } },
+      { id: 'CO', name: { ja: 'コロンビア', en: 'Colombia', es: 'Colombia' }, lat: 4.5709, lng: -74.2973, priceUsd: 1.90, note: { ja: '手頃なストリートフード。', en: 'Affordable street food culture.', es: 'Cultura de comida callejera asequible.' } },
+      { id: 'PE', name: { ja: 'ペルー', en: 'Peru', es: 'Perú' }, lat: -9.1900, lng: -75.0152, priceUsd: 2.00, note: { ja: '食文化豊かでお手頃。', en: 'Rich culinary culture at reasonable prices.', es: 'Rica cultura culinaria a precios razonables.' } },
+      { id: 'JP', name: { ja: '日本', en: 'Japan', es: 'Japón' }, lat: 36.2048, lng: 138.2529, priceUsd: 2.90, note: { ja: '輸入コストにより世界水準ではやや高め。', en: 'Slightly high globally due to import costs.', es: 'Un poco alto a nivel mundial debido a costos de importación.' } },
+      { id: 'KR', name: { ja: '韓国', en: 'South Korea', es: 'Corea del Sur' }, lat: 35.9078, lng: 127.7669, priceUsd: 3.10, note: { ja: 'ソウルの外食物価上昇に伴い高め。', en: 'High due to rising restaurant prices in Seoul.', es: 'Alto debido al aumento de precios en restaurantes de Seúl.' } },
+      { id: 'CN', name: { ja: '中国', en: 'China', es: 'China' }, lat: 35.8617, lng: 104.1954, priceUsd: 2.30, note: { ja: '都市部では標準的な価格。', en: 'Standard prices in major urban areas.', es: 'Precios estándar en las principales zonas urbanas.' } },
+      { id: 'TW', name: { ja: '台湾', en: 'Taiwan', es: 'Taiwán' }, lat: 23.6978, lng: 120.9605, priceUsd: 2.40, note: { ja: '屋台文化が盛んでリーズナブル。', en: 'Reasonable prices supported by street food culture.', es: 'Precios razonables respaldados por la comida callejera.' } },
+      { id: 'TH', name: { ja: 'タイ', en: 'Thailand', es: 'Tailandia' }, lat: 15.8700, lng: 100.9925, priceUsd: 1.70, note: { ja: 'ローカル物価が安く割安感あり。', en: 'Affordable due to low local living costs.', es: 'Asequible debido al bajo costo de vida local.' } },
+      { id: 'VN', name: { ja: 'ベトナム', en: 'Vietnam', es: 'Vietnam' }, lat: 14.0583, lng: 108.2772, priceUsd: 1.50, note: { ja: '東南アジア屈指の割安スポット。', en: 'One of the cheapest spots in Southeast Asia.', es: 'Uno de los lugares más baratos del sudeste asiático.' } },
+      { id: 'PH', name: { ja: 'フィリピン', en: 'Philippines', es: 'Filipinas' }, lat: 12.8797, lng: 121.7740, priceUsd: 1.60, note: { ja: 'ストリートフード感覚で割安。', en: 'Inexpensive casual dining option.', es: 'Opción gastronómica informal y económica.' } },
+      { id: 'ID', name: { ja: 'インドネシア', en: 'Indonesia', es: 'Indonesia' }, lat: -0.7893, lng: 113.9213, priceUsd: 1.40, note: { ja: '物価水準が非常に低く割安。', en: 'Very low price level compared to global standards.', es: 'Nivel de precios muy bajo en comparación con el estándar.' } },
+      { id: 'MY', name: { ja: 'マレーシア', en: 'Malaysia', es: 'Malasia' }, lat: 4.2105, lng: 101.9758, priceUsd: 1.80, note: { ja: '外食が安くお手頃。', en: 'Affordable dining options throughout.', es: 'Opciones para comer fuera asequibles.' } },
+      { id: 'SG', name: { ja: 'シンガポール', en: 'Singapore', es: 'Singapur' }, lat: 1.3521, lng: 103.8198, priceUsd: 4.20, note: { ja: '高物価でアジア最高水準。', en: 'High cost of living, highest in Asia.', es: 'Alto costo de vida, el más alto de Asia.' } },
+      { id: 'IN', name: { ja: 'インド', en: 'India', es: 'India' }, lat: 20.5937, lng: 78.9629, priceUsd: 1.30, note: { ja: 'データの中で最も割安。', en: 'Lowest price level in this dataset.', es: 'El nivel de precio más bajo en este conjunto de datos.' } },
+      { id: 'AU', name: { ja: 'オーストラリア', en: 'Australia', es: 'Australia' }, lat: -25.2744, lng: 133.7751, priceUsd: 4.10, note: { ja: '高賃金とインフレで割高。', en: 'High prices due to high wages and inflation.', es: 'Precios altos debido a salarios e inflación.' } },
+      { id: 'NZ', name: { ja: 'ニュージーランド', en: 'New Zealand', es: 'Nueva Zelanda' }, lat: -40.9006, lng: 174.8860, priceUsd: 3.90, note: { ja: '島国特有の物流コスト上乗せ。', en: 'Extra import & logistics costs as an island nation.', es: 'Costos adicionales de logística por ser nación insular.' } },
+      { id: 'TR', name: { ja: 'トルコ', en: 'Turkey', es: 'Turquía' }, lat: 38.9637, lng: 35.2433, priceUsd: 1.60, note: { ja: 'リラ安によりドル換算で割安。', en: 'Cheap in USD due to Lira devaluation.', es: 'Barato en USD debido a la devaluación de la Lira.' } },
+      { id: 'AE', name: { ja: 'UAE', en: 'UAE', es: 'EAU' }, lat: 23.4241, lng: 53.8478, priceUsd: 4.50, note: { ja: 'ドバイ等の高級志向により割高。', en: 'Expensive driven by luxury markets in Dubai.', es: 'Caro impulsado por los mercados de lujo en Dubái.' } },
+      { id: 'GB', name: { ja: 'イギリス', en: 'United Kingdom', es: 'Reino Unido' }, lat: 55.3781, lng: -3.4360, priceUsd: 4.30, note: { ja: 'ポンド高と物価高騰で高額。', en: 'High cost due to strong Pound and inflation.', es: 'Alto costo debido a la libra fuerte y la inflación.' } },
+      { id: 'FR', name: { ja: 'フランス', en: 'France', es: 'Francia' }, lat: 46.2276, lng: 2.2137, priceUsd: 4.00, note: { ja: '外食費が高水準。', en: 'High dining costs standard across Europe.', es: 'Altos costos de restauración estándar en Europa.' } },
+      { id: 'DE', name: { ja: 'ドイツ', en: 'Germany', es: 'Alemania' }, lat: 51.1657, lng: 10.4515, priceUsd: 3.70, note: { ja: '欧州の標準的外食価格。', en: 'Standard dining out price point in Central Europe.', es: 'Precio estándar de restaurante en Europa Central.' } },
+      { id: 'IT', name: { ja: 'イタリア', en: 'Italy', es: 'Italia' }, lat: 41.8719, lng: 12.5674, priceUsd: 3.50, note: { ja: '自国食文化強め。', en: 'Moderate pricing influenced by strong food culture.', es: 'Precios moderados por su fuerte cultura gastronómica.' } },
+      { id: 'ES', name: { ja: 'スペイン', en: 'Spain', es: 'España' }, lat: 40.4637, lng: -3.7492, priceUsd: 3.20, note: { ja: '西欧の中ではやや抑えめ。', en: 'Relatively affordable compared to Western Europe.', es: 'Relativamente asequible en comparación con Europa Occidental.' } },
+      { id: 'PT', name: { ja: 'ポルトガル', en: 'Portugal', es: 'Portugal' }, lat: 39.3999, lng: -8.2245, priceUsd: 2.80, note: { ja: '西欧諸国の中では手頃。', en: 'One of the most budget-friendly in Western Europe.', es: 'Uno de los más económicos de Europa Occidental.' } },
+      { id: 'NL', name: { ja: 'オランダ', en: 'Netherlands', es: 'Países Bajos' }, lat: 52.1326, lng: 5.2913, priceUsd: 4.10, note: { ja: '物価水準が高く割高。', en: 'High cost of living reflecting in food prices.', es: 'Alto costo de vida reflejado en los precios de la comida.' } },
+      { id: 'CH', name: { ja: 'スイス', en: 'Switzerland', es: 'Suiza' }, lat: 46.8182, lng: 8.2275, priceUsd: 6.80, note: { ja: '世界最高クラスの物価高！', en: 'Highest price level in the world!', es: '¡El nivel de precios más alto del mundo!' } },
+      { id: 'NO', name: { ja: 'ノルウェー', en: 'Norway', es: 'Noruega' }, lat: 60.4720, lng: 8.4689, priceUsd: 5.80, note: { ja: '北欧特有の高い消費税。', en: 'High Nordic taxes drive up overall cost.', es: 'Impuestos nórdicos elevados aumentan el costo.' } },
+      { id: 'SE', name: { ja: 'スウェーデン', en: 'Sweden', es: 'Suecia' }, lat: 60.1282, lng: 18.6435, priceUsd: 4.60, note: { ja: '北欧エリア共通の割高水準。', en: 'Overpriced, typical of Nordic region.', es: 'Sobreprecio, típico de la región nórdica.' } },
+      { id: 'DK', name: { ja: 'デンマーク', en: 'Denmark', es: 'Dinamarca' }, lat: 56.2639, lng: 9.5018, priceUsd: 5.20, note: { ja: '高い税率と生活コスト。', en: 'High VAT rates and living costs.', es: 'Altas tasas de IVA y costos de vida.' } },
+      { id: 'PL', name: { ja: 'ポーランド', en: 'Poland', es: 'Polonia' }, lat: 51.9194, lng: 19.1451, priceUsd: 2.30, note: { ja: '東欧エリアは西欧より手頃。', en: 'Eastern European prices are more affordable.', es: 'Precios en Europa del Este más asequibles.' } },
+      { id: 'CZ', name: { ja: 'チェコ', en: 'Czech Republic', es: 'República Checa' }, lat: 49.8175, lng: 15.4730, priceUsd: 2.50, note: { ja: '中欧の中程度物価。', en: 'Moderate pricing for Central Europe.', es: 'Precios moderados para Europa Central.' } },
+      { id: 'GR', name: { ja: 'ギリシャ', en: 'Greece', es: 'Grecia' }, lat: 39.0742, lng: 21.8243, priceUsd: 2.70, note: { ja: '南欧の中では手頃。', en: 'Affordable dining option in Southern Europe.', es: 'Opción gastronómica asequible en el sur de Europa.' } },
+      { id: 'HU', name: { ja: 'ハンガリー', en: 'Hungary', es: 'Hungría' }, lat: 47.1625, lng: 19.5033, priceUsd: 2.20, note: { ja: '通貨安により割安感あり。', en: 'Inexpensive thanks to local currency rates.', es: 'Económico gracias a los tipos de cambio de la moneda local.' } },
+      { id: 'AT', name: { ja: 'オーストリア', en: 'Austria', es: 'Austria' }, lat: 47.5162, lng: 14.5501, priceUsd: 3.80, note: { ja: '安定した高め設定。', en: 'Consistently higher living cost.', es: 'Costo de vida constantemente más alto.' } },
+      { id: 'BE', name: { ja: 'ベルギー', en: 'Belgium', es: 'Bélgica' }, lat: 50.5039, lng: 4.4699, priceUsd: 3.90, note: { ja: '西欧基準の高水準価格。', en: 'Western European high-end pricing.', es: 'Precios de gama alta en Europa Occidental.' } },
+      { id: 'FI', name: { ja: 'フィンランド', en: 'Finland', es: 'Finlandia' }, lat: 64.9631, lng: 25.7482, priceUsd: 4.80, note: { ja: '北欧エリアの物価高を反映。', en: 'Reflects high price levels in Northern Europe.', es: 'Refleja los altos niveles de precios en el norte de Europa.' } },
+      { id: 'ZA', name: { ja: '南アフリカ', en: 'South Africa', es: 'Sudáfrica' }, lat: -30.5595, lng: 22.9375, priceUsd: 1.90, note: { ja: 'アフリカの大国、比較的安い。', en: 'Relatively low cost of living.', es: 'Costo de vida relativamente bajo.' } },
+      { id: 'EG', name: { ja: 'エジプト', en: 'Egypt', es: 'Egipto' }, lat: 26.8206, lng: 30.8025, priceUsd: 1.20, note: { ja: '通貨切り下げで極めて割安。', en: 'Extremely cheap following currency devaluation.', es: 'Extremadamente barato tras la devaluación de la moneda.' } },
+      { id: 'KE', name: { ja: 'ケニア', en: 'Kenya', es: 'Kenia' }, lat: -0.0236, lng: 37.9062, priceUsd: 1.70, note: { ja: '東アフリカのハブ。', en: 'East African regional price standard.', es: 'Estándar regional de precios en África Oriental.' } },
+      { id: 'NG', name: { ja: 'ナイジェリア', en: 'Nigeria', es: 'Nigeria' }, lat: 9.0820, lng: 8.6753, priceUsd: 1.50, note: { ja: '通貨変動激しくドル安。', en: 'Volatile local currency leads to cheap USD price.', es: 'Moneda local volátil genera precios bajos en USD.' } },
+      { id: 'MA', name: { ja: 'モロッコ', en: 'Morocco', es: 'Marruecos' }, lat: 31.7917, lng: -7.0926, priceUsd: 1.80, note: { ja: 'ローカル価格は安価。', en: 'Very economical local prices.', es: 'Precios locales muy económicos.' } },
+      { id: 'SA', name: { ja: 'サウジアラビア', en: 'Saudi Arabia', es: 'Arabia Saudita' }, lat: 23.8859, lng: 45.0792, priceUsd: 3.50, note: { ja: '湾岸諸国の高購買力。', en: 'High purchasing power in Gulf region.', es: 'Alto poder adquisitivo en la región del Golfo.' } },
+      { id: 'IL', name: { ja: 'イスラエル', en: 'Israel', es: 'Israel' }, lat: 31.0461, lng: 34.8516, priceUsd: 5.50, note: { ja: '中東で群を抜く高物価。', en: 'Significantly higher costs than neighboring regions.', es: 'Costos significativamente más altos que regiones vecinas.' } },
+      { id: 'QA', name: { ja: 'カタール', en: 'Qatar', es: 'Catar' }, lat: 25.3548, lng: 51.1839, priceUsd: 4.20, note: { ja: '富裕国を反映した高水準。', en: 'High cost reflecting wealth of the nation.', es: 'Alto costo que refleja la riqueza de la nación.' } },
+      { id: 'GH', name: { ja: 'ガーナ', en: 'Ghana', es: 'Ghana' }, lat: 7.9465, lng: -1.0232, priceUsd: 1.60, note: { ja: '西アフリカの標準コスト。', en: 'Standard price point for West Africa.', es: 'Punto de precio estándar para África Occidental.' } }
+    ];
+
+    let map = null, markers = [];
+    const basePriceUsd = 2.20; // メキシコ
+    let currentUsdJpyRate = 150.0; // デフォルトフォールバック値
+    let currentSelectedCountry = countries[0];
+
+    window.onload = () => {
+      map = L.map('map').setView([20, 0], 2);
+      L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png', {
+        attribution: '&copy; 国土地理院', maxZoom: 18
+      }).addTo(map);
+
+      // 初回リアルタイム為替取得
+      fetchFxRate();
+    };
+
+    function changeLanguage() {
+      currentLang = document.getElementById('langSelect').value;
+      const t = i18n[currentLang];
+
+      // UIテキストの一括書き換え
+      document.getElementById('optAll').innerText = t.optAll;
+      document.getElementById('optOver').innerText = t.optOver;
+      document.getElementById('optUnder').innerText = t.optUnder;
+      document.getElementById('labelFx').innerText = t.labelFx;
+      document.getElementById('labelApi').innerText = t.labelApi;
+      document.getElementById('btnRefresh').innerText = t.btnRefresh;
+      document.getElementById('labelRankingTitle').innerText = t.labelRankingTitle;
+
+      document.getElementById('fxRateVal').innerText = `1 USD = ${currentUsdJpyRate.toFixed(2)} JPY`;
+
+      updateView();
+      if (currentSelectedCountry) {
+        showDetail(currentSelectedCountry);
+      }
+    }
+
+    // 無料APIからリアルタイム為替（USD→JPY）を取得
+    async function fetchFxRate() {
+      const statusEl = document.getElementById('apiStatus');
+      const t = i18n[currentLang];
+      statusEl.innerText = t.fetching;
+      statusEl.style.background = '#f59e0b';
+
+      try {
+        const res = await fetch('https://open.er-api.com/v6/latest/USD');
+        const data = await res.json();
+        
+        if (data && data.rates && data.rates.JPY) {
+          currentUsdJpyRate = data.rates.JPY;
+          document.getElementById('fxRateVal').innerText = `1 USD = ${currentUsdJpyRate.toFixed(2)} JPY`;
+          statusEl.innerText = 'ONLINE';
+          statusEl.style.background = '#10b981';
+        } else {
+          throw new Error('Invalid rate data');
+        }
+      } catch (err) {
+        console.warn('API取得失敗。固定値を使用します:', err);
+        document.getElementById('fxRateVal').innerText = `1 USD = ${currentUsdJpyRate.toFixed(2)} JPY ${t.fixed}`;
+        statusEl.innerText = 'OFFLINE';
+        statusEl.style.background = '#ef4444';
+      }
+
+      updateView();
+      if (currentSelectedCountry) showDetail(currentSelectedCountry);
+    }
+
+    function updateView() {
+      const filter = document.getElementById('filterSelect').value;
+      markers.forEach(m => map.removeLayer(m));
+      markers = [];
+
+      const filtered = countries.filter(c => {
+        if (filter === 'over') return c.priceUsd > basePriceUsd;
+        if (filter === 'under') return c.priceUsd < basePriceUsd;
+        return true;
+      });
+
+      filtered.forEach(c => {
+        let cls = 'pin-base';
+        if (c.priceUsd > basePriceUsd) cls = 'pin-over';
+        if (c.priceUsd < basePriceUsd) cls = 'pin-under';
+
+        const icon = L.divIcon({
+          className: '',
+          html: `<div class="custom-pin ${cls}"></div>`,
+          iconSize: [12, 12]
+        });
+
+        const m = L.marker([c.lat, c.lng], { icon: icon }).addTo(map);
+        m.on('click', () => showDetail(c));
+        markers.push(m);
+      });
+
+      renderRanking(filtered);
+    }
+
+    function showDetail(c) {
+      currentSelectedCountry = c;
+      const t = i18n[currentLang];
+      
+      const priceJpy = Math.round(c.priceUsd * currentUsdJpyRate);
+      const budgetUsd = 1000;
+      const tacosBuyable = Math.floor(budgetUsd / c.priceUsd);
+      const pppRatio = ((c.priceUsd / basePriceUsd) * 100).toFixed(0);
+
+      const countryName = c.name[currentLang] || c.name.ja;
+      const countryNote = c.note[currentLang] || c.note.ja;
+
+      document.getElementById('detailBox').innerHTML = `
+        <div class="card-title">
+          <span>${countryName}</span>
+          <span style="font-size:0.8rem; color:#94a3b8;">${c.priceUsd > basePriceUsd ? t.tagOver : (c.priceUsd === basePriceUsd ? t.tagBase : t.tagUnder)}</span>
+        </div>
+        <div class="data-row"><span>${t.priceUsd}</span><b class="highlight-val">$${c.priceUsd.toFixed(2)}</b></div>
+        <div class="data-row"><span>${t.priceJpy}</span><b style="color:#f59e0b;">約 ${priceJpy.toLocaleString()} 円</b></div>
+        <div class="data-row"><span>${t.pppRatio}</span><b>${pppRatio}%</b></div>
+        
+        <div class="game-box">
+          <div style="font-size:0.75rem; color:#cbd5e1;">${t.tripMsg}</div>
+          <div class="taco-count">🌮 ${tacosBuyable.toLocaleString()} ${t.buyableMsg}</div>
+          <div style="font-size:0.7rem; color:#94a3b8; margin-top:2px;">
+            ${tacosBuyable > 400 ? t.highPurchasing : t.lowPurchasing}
+          </div>
+        </div>
+
+        <div style="font-size: 0.8rem; color: #94a3b8; margin-top: 8px; border-top: 1px dashed #334155; padding-top: 6px;">
+          ${t.noteTitle}<br>${countryNote}
+        </div>
+      `;
+      map.panTo([c.lat, c.lng]);
+    }
+
+    function renderRanking(list) {
+      const sorted = [...list].sort((a, b) => b.priceUsd - a.priceUsd);
+      const rankingEl = document.getElementById('rankingList');
+      rankingEl.innerHTML = '';
+
+      sorted.forEach((c, idx) => {
+        const priceJpy = Math.round(c.priceUsd * currentUsdJpyRate);
+        const li = document.createElement('li');
+        const countryName = c.name[currentLang] || c.name.ja;
+        li.className = 'ranking-item';
+        li.onclick = () => showDetail(c);
+        li.innerHTML = `
+          <span><b>${idx+1}.</b> ${countryName}</span>
+          <span><b>$${c.priceUsd.toFixed(2)}</b> <small style="color:#94a3b8;">(${priceJpy.toLocaleString()}円)</small></span>
+        `;
+        rankingEl.appendChild(li);
+      });
+    }
+  </script>
+</body>
+</html>
